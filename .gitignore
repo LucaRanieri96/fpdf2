@@ -5,12 +5,13 @@ __pycache__/
 *.so
 .Python
 venv/
+.venv/
 ENV/
 env/
 
 # PDF output
-output/*.pdf
-!output/.gitkeep
+*.pdf
+!.gitkeep
 
 # IDE
 .vscode/
@@ -18,6 +19,10 @@ output/*.pdf
 *.swp
 *.swo
 *~
+
+# Cache
+.mypy_cache/
+.pytest_cache/
 
 # OS
 .DS_Store

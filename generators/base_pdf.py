@@ -1,6 +1,6 @@
-from typing import Literal, List, Dict, Any, Optional, Sequence, Tuple
+from typing import Literal, List, Dict, Any, Optional, Sequence, Tuple, Callable
 from fpdf import FPDF
-from fpdf.enums import XPos, YPos, Align
+from fpdf.enums import XPos, YPos, Align, RenderStyle
 from fpdf.fonts import FontFace
 
 
@@ -739,3 +739,305 @@ class KobakPDF(FPDF):
         for idx, clause in enumerate(clauses, start=1):
             self.multi_cell(0, FONT_CONFIG['small']['height'], text=f"{idx}. {clause}")
             self.ln(1)
+
+    # ==================== COMPONENTI AGGIUNTIVI PER CONTRATTI ====================
+    
+    def rounded_rect(self, x: float, y: float, w: float, h: float, r: float, style: str = ''):
+        """
+        Disegna un rettangolo con angoli arrotondati.
+        
+        Args:
+            x: Coordinata X (angolo alto-sinistra)
+            y: Coordinata Y (angolo alto-sinistra)
+            w: Larghezza
+            h: Altezza
+            r: Raggio degli angoli arrotondati
+            style: 'D' draw, 'F' fill, 'DF' draw+fill
+        """
+        render_style = RenderStyle.coerce(style) if style else RenderStyle.D
+        self.rect(x, y, w, h, style=render_style, round_corners=True, corner_radius=r)
+    
+    def add_label_value_line(self, label: str, value: str, 
+                            label_width: float = None,
+                            line_height: float = 4,
+                            label_style: str = 'B',
+                            value_style: str = '',
+                            font_size: int = 7):
+        """
+        Riga con formato "Label: Value".
+        
+        Args:
+            label: Testo label (grassetto)
+            value: Testo valore
+            label_width: Larghezza area label (default: 40)
+            line_height: Altezza riga
+            label_style: Stile font label
+            value_style: Stile font valore
+            font_size: Dimensione font
+        """
+        page_width = self.content_width
+        lbl_width = label_width if label_width is not None else 40
+        
+        # Reset posizione X
+        self.set_x(self.l_margin)
+        
+        # Label
+        self.set_font(self.font_family, label_style, font_size)
+        self.cell(lbl_width, line_height, label, new_x=XPos.RIGHT)
+        
+        # Value
+        self.set_font(self.font_family, value_style, font_size)
+        self.cell(page_width - lbl_width, line_height, value, new_x=XPos.LEFT, new_y=YPos.NEXT)
+    
+    def add_two_columns_with_callbacks(self, left_fn: Callable, right_fn: Callable,
+                                      col_ratio: float = 0.5, gutter: float = 3,
+                                      return_to_max_y: bool = True):
+        """
+        Layout a due colonne con funzioni callback per il contenuto.
+        
+        Args:
+            left_fn: Funzione che genera contenuto colonna sinistra
+            right_fn: Funzione che genera contenuto colonna destra
+            col_ratio: Rapporto larghezza sinistra/totale (0-1)
+            gutter: Spazio tra colonne
+            return_to_max_y: Se True, posiziona cursore dopo colonna più lunga
+        """
+        page_width = self.content_width
+        left_width = page_width * col_ratio - gutter / 2
+        right_width = page_width * (1 - col_ratio) - gutter / 2
+        
+        y_start = self.get_y()
+        x_left = self.l_margin
+        x_right = self.l_margin + left_width + gutter
+        
+        # Colonna sinistra
+        self.set_xy(x_left, y_start)
+        left_fn()
+        left_end_y = self.get_y()
+        
+        # Colonna destra
+        self.set_xy(x_right, y_start)
+        right_fn()
+        right_end_y = self.get_y()
+        
+        # Posiziona cursore
+        if return_to_max_y:
+            self.set_y(max(left_end_y, right_end_y))
+    
+    def add_columns_with_headers(self, 
+                                left_header: str, left_fn: Callable,
+                                right_header: str, right_fn: Callable,
+                                col_ratio: float = 0.5, gutter: float = 3,
+                                left_header_bg: str = 'primary',
+                                right_header_bg: str = 'chip_gray'):
+        """
+        Due colonne con header separati usando callback.
+        
+        Args:
+            left_header: Testo header sinistra
+            left_fn: Funzione contenuto sinistra
+            right_header: Testo header destra
+            right_fn: Funzione contenuto destra
+            col_ratio: Rapporto colonne
+            gutter: Spazio tra colonne
+            left_header_bg: Nome colore header sinistra (da COLORS)
+            right_header_bg: Nome colore header destra (da COLORS)
+        """
+        page_width = self.content_width
+        left_width = page_width * col_ratio - gutter / 2
+        right_width = page_width * (1 - col_ratio) - gutter / 2
+        
+        y_start = self.get_y()
+        x_left = self.l_margin
+        x_right = self.l_margin + left_width + gutter
+        
+        # Colonna sinistra
+        self.set_xy(x_left, y_start)
+        if left_header:
+            # Header sinistra
+            bg_color = COLORS.get(left_header_bg, COLORS['primary'])
+            self.set_fill_color(*bg_color)
+            self.set_text_color(*COLORS['text_dark'])
+            self.set_font(self.font_family, 'B', 9)
+            
+            y_pos = self.get_y()
+            self.rounded_rect(x_left, y_pos, left_width, 7, 2, style='F')
+            self.cell(left_width, 7, left_header, border=0, align=Align.C, fill=False, 
+                     new_x=XPos.LEFT, new_y=YPos.NEXT)
+            self.ln(2)
+            
+            self.set_text_color(*COLORS['text_dark'])
+            self.set_fill_color(*COLORS['bg_white'])
+        
+        left_fn()
+        left_end_y = self.get_y()
+        
+        # Colonna destra
+        self.set_xy(x_right, y_start)
+        if right_header:
+            # Header destra
+            bg_color = COLORS.get(right_header_bg, COLORS['chip_gray'])
+            self.set_fill_color(*bg_color)
+            self.set_text_color(*COLORS['text_white'])
+            self.set_font(self.font_family, 'B', 9)
+            
+            y_pos = self.get_y()
+            self.rounded_rect(x_right, y_pos, right_width, 7, 2, style='F')
+            self.cell(right_width, 7, right_header, border=0, align=Align.C, fill=False, 
+                     new_x=XPos.LEFT, new_y=YPos.NEXT)
+            self.ln(2)
+            
+            self.set_text_color(*COLORS['text_dark'])
+            self.set_fill_color(*COLORS['bg_white'])
+        
+        right_fn()
+        right_end_y = self.get_y()
+        
+        # Posiziona cursore dopo la colonna più lunga
+        self.set_y(max(left_end_y, right_end_y))
+    
+    def add_checkbox(self, x: float = None, y: float = None, 
+                    size: float = 4, checked: bool = False,
+                    corner_radius: float = 0.5):
+        """
+        Disegna un singolo checkbox.
+        
+        Args:
+            x: Coordinata X (None = posizione corrente)
+            y: Coordinata Y (None = posizione corrente)
+            size: Dimensione checkbox
+            checked: Se True, disegna una X
+            corner_radius: Raggio angoli
+        """
+        x_pos = x if x is not None else self.get_x()
+        y_pos = y if y is not None else self.get_y()
+        
+        self.set_draw_color(0, 0, 0)
+        self.rounded_rect(x_pos, y_pos, size, size, corner_radius, style='D')
+        
+        if checked:
+            self.set_xy(x_pos, y_pos)
+            self.set_font(self.font_family, 'B', 7)
+            self.cell(size, size, "X", align=Align.C)
+    
+    def add_checkbox_row(self, items: list, spacing: float = 10, 
+                        checkbox_size: float = 4, font_size: int = 7):
+        """
+        Riga orizzontale di checkbox con label.
+        
+        Args:
+            items: Lista di label (str) o tuple (label, checked)
+            spacing: Spazio tra checkbox
+            checkbox_size: Dimensione checkbox
+            font_size: Dimensione font label
+        """
+        for i, item in enumerate(items):
+            # Parse item
+            if isinstance(item, tuple):
+                label, checked = item
+            else:
+                label, checked = item, False
+            
+            # Checkbox
+            self.add_checkbox(size=checkbox_size, checked=checked)
+            self.cell(checkbox_size + 2, checkbox_size, "", new_x=XPos.RIGHT)
+            
+            # Label
+            self.set_font(self.font_family, '', font_size)
+            self.cell(0, checkbox_size, label, 
+                     new_x=XPos.RIGHT if i < len(items) - 1 else XPos.LEFT)
+            
+            # Spacing
+            if i < len(items) - 1:
+                self.cell(spacing, checkbox_size, "", new_x=XPos.RIGHT)
+        
+        self.ln(6)
+    
+    def add_table_row_with_fill(self, cells: list, widths: list, height: float = 5,
+                                fill: bool = False, fill_color: Tuple[int, int, int] = None,
+                                border: int = 0, font_size: int = 7, font_style: str = '',
+                                aligns: list = None, corner_radius: float = 0):
+        """
+        Riga di tabella con celle personalizzabili e background arrotondato.
+        
+        Args:
+            cells: Lista di contenuti celle
+            widths: Lista di larghezze celle (percentuali 0-1 o assolute)
+            height: Altezza riga
+            fill: Se True, usa colore di riempimento
+            fill_color: Tupla RGB per fill (default: bg_light)
+            border: Bordi celle (0=no, 1=si)
+            font_size: Dimensione font
+            font_style: Stile font
+            aligns: Lista allineamenti per cella ('L', 'C', 'R')
+            corner_radius: Raggio angoli se fill=True
+        """
+        page_width = self.content_width
+        
+        # Normalizza widths
+        normalized_widths = []
+        for w in widths:
+            if 0 < w <= 1:
+                normalized_widths.append(w * page_width)
+            else:
+                normalized_widths.append(w)
+        
+        # Setup aligns
+        if aligns is None:
+            aligns = ['L'] * len(cells)
+        
+        # Setup fill
+        if fill:
+            color = fill_color if fill_color else COLORS.get('bg_light', (246, 246, 246))
+            self.set_fill_color(*color)
+            
+            if corner_radius > 0:
+                y_pos = self.get_y()
+                self.rounded_rect(self.l_margin, y_pos, page_width, height, corner_radius, style='F')
+        
+        # Reset X
+        self.set_x(self.l_margin)
+        self.set_font(self.font_family, font_style, font_size)
+        
+        # Disegna celle
+        for i, (cell, width, align) in enumerate(zip(cells, normalized_widths, aligns)):
+            is_last = (i == len(cells) - 1)
+            self.cell(width, height, str(cell), border=border, align=align,
+                     fill=False,  # Fill già gestito con rounded_rect
+                     new_x=XPos.LEFT if is_last else XPos.RIGHT,
+                     new_y=YPos.NEXT if is_last else YPos.TOP)
+    
+    def reset_x(self):
+        """Reset X al margine sinistro"""
+        self.set_x(self.l_margin)
+    
+    def draw_horizontal_line(self, color: Tuple[int, int, int] = None, width: float = 0.5, 
+                            x_start: float = None, x_end: float = None, y: float = None):
+        """
+        Disegna una linea orizzontale.
+        
+        Args:
+            color: Tupla RGB per il colore (default: primary color)
+            width: Spessore linea
+            x_start: Coordinata X inizio (default: left margin)
+            x_end: Coordinata X fine (default: right margin)
+            y: Coordinata Y (default: current Y position)
+        """
+        if color:
+            self.set_draw_color(*color)
+        else:
+            self.set_draw_color(*COLORS.get('primary', (0, 0, 0)))
+        
+        old_width = self.line_width
+        self.set_line_width(width)
+        
+        x1 = x_start if x_start is not None else self.l_margin
+        x2 = x_end if x_end is not None else (self.w - self.r_margin)
+        y_pos = y if y is not None else self.get_y()
+        
+        self.line(x1, y_pos, x2, y_pos)
+        
+        # Reset
+        self.set_draw_color(0, 0, 0)
+        self.set_line_width(old_width)
+
