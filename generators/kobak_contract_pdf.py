@@ -140,39 +140,23 @@ class KobakContractPDF(KobakPDF):
     
     def add_services_table(self, services_data):
         """
-        Tabella dettagli servizi usando componente base add_table_row_with_fill.
+        Tabella dettagli servizi usando componente base add_zebra_table.
         """
-        headers = ['DESCRIZIONE', 'QUANTITÀ', 'UNITÀ DI MISURA', 'PREZZO UNITARIO (EUR)', 'PREZZO TOTALE (EUR)']
-        col_widths = [0.45, 0.12, 0.15, 0.14, 0.14]
+        headers = ['DESCRIZIONE', 'QTÀ', 'UNITÀ', 'PREZZO UNIT. (EUR)', 'TOTALE (EUR)']
+        col_widths = [0.40, 0.10, 0.15, 0.17, 0.18]
+        aligns = ['L'] + ['C'] * (len(headers) - 1)
         
-        # Header con background grigio chiaro
-        self.add_table_row_with_fill(
-            cells=headers,
-            widths=col_widths,
-            height=6,
-            fill=True,
-            fill_color=COLORS['bg_light'],
-            font_style='B',
-            font_size=7,
-            aligns=['C'] * len(headers),
-            border=1
+        self.add_zebra_table(
+            headers=headers,
+            rows=services_data,
+            col_widths=col_widths,
+            aligns=aligns,
+            header_bg='bg_light',
+            zebra_color='bg_light',
+            header_font_size=6,
+            row_font_size=6.5,
+            row_height=7
         )
-        
-        # Righe dati con zebra striping
-        for idx, service in enumerate(services_data):
-            fill_color = (249, 249, 249) if idx % 2 == 0 else (255, 255, 255)
-            aligns = ['L'] + ['C'] * (len(service) - 1)
-            
-            self.add_table_row_with_fill(
-                cells=service,
-                widths=col_widths,
-                height=5,
-                fill=True,
-                fill_color=fill_color,
-                font_size=7,
-                aligns=aligns,
-                border=1
-            )
     
     def add_totals_section(self, totals_data):
         """
@@ -186,18 +170,14 @@ class KobakContractPDF(KobakPDF):
                 widths=[0.65, 0.35],
                 height=5,
                 fill=True,
-                fill_color=(232, 232, 232),
+                fill_color=COLORS['bg_light'],
                 font_style='B',
                 font_size=7,
                 aligns=['L', 'R'],
                 corner_radius=1
             )
-            
             # Linea separatrice sottile
-            y_pos = self.get_y()
-            self.set_draw_color(200, 200, 200)
-            self.line(self.l_margin, y_pos, self.w - self.r_margin, y_pos)
-            self.set_draw_color(0, 0, 0)
+            self.draw_horizontal_line(color=(200, 200, 200), width=0.1)
         
         self.ln(2)
     
@@ -205,31 +185,45 @@ class KobakContractPDF(KobakPDF):
         """
         Sezione firme affiancate usando componente base add_columns_with_headers.
         """
+        # Salva content_width per calcoli
+        col_width = self.content_width * 0.5 - 2
+        
         def left_signature():
+            # Forza X all'inizio della colonna sinistra
+            x_start = self.l_margin
+            self.set_x(x_start)
             self.set_font(self.font_family, '', 7)
-            self.cell(0, 4, "Luogo .................................................................,", new_x=XPos.LEFT, new_y=YPos.NEXT)
-            self.cell(0, 4, "Data ......./....../..............", new_x=XPos.LEFT, new_y=YPos.NEXT)
+            self.cell(col_width, 4, "Luogo .................................................................,", new_x=XPos.LEFT, new_y=YPos.NEXT)
+            self.set_x(x_start)
+            self.cell(col_width, 4, "Data ......./....../..............", new_x=XPos.LEFT, new_y=YPos.NEXT)
             self.ln(5)
             
-            self.cell(0, 4, "IL CLIENTE", new_x=XPos.LEFT, new_y=YPos.NEXT)
-            self.cell(0, 4, "(Timbro e Firma)", new_x=XPos.LEFT, new_y=YPos.NEXT)
+            self.set_x(x_start)
+            self.cell(col_width, 4, "IL CLIENTE", new_x=XPos.LEFT, new_y=YPos.NEXT)
+            self.set_x(x_start)
+            self.cell(col_width, 4, "(Timbro e Firma)", new_x=XPos.LEFT, new_y=YPos.NEXT)
             self.ln(2)
             
             # Linea firma
-            col_width = self.content_width * 0.5 - 1.5
+            self.set_x(x_start)
             self.cell(col_width, 0.3, "", border='B', new_x=XPos.LEFT, new_y=YPos.NEXT)
         
         def right_signature():
+            # Forza X all'inizio della colonna destra
+            x_start = self.l_margin + self.content_width * 0.5 + 2
+            self.set_x(x_start)
             self.set_font(self.font_family, '', 7)
-            self.cell(0, 4, "Ritirare i Bagni Dal ......./....../..............", new_x=XPos.LEFT, new_y=YPos.NEXT)
-            self.ln(9)
+            self.cell(col_width, 4, "Ritirare i Bagni Dal ......./....../..............", new_x=XPos.LEFT, new_y=YPos.NEXT)
+            self.ln(5)
             
-            self.cell(0, 4, "IL CLIENTE", new_x=XPos.LEFT, new_y=YPos.NEXT)
-            self.cell(0, 4, "(Timbro e Firma)", new_x=XPos.LEFT, new_y=YPos.NEXT)
+            self.set_x(x_start)
+            self.cell(col_width, 4, "IL CLIENTE", new_x=XPos.LEFT, new_y=YPos.NEXT)
+            self.set_x(x_start)
+            self.cell(col_width, 4, "(Timbro e Firma)", new_x=XPos.LEFT, new_y=YPos.NEXT)
             self.ln(2)
             
             # Linea firma
-            col_width = self.content_width * 0.5 - 1.5
+            self.set_x(x_start)
             self.cell(col_width, 0.3, "", border='B', new_x=XPos.LEFT, new_y=YPos.NEXT)
         
         self.add_columns_with_headers(
@@ -283,182 +277,103 @@ class KobakContractPDF(KobakPDF):
         
         # SEZIONE DATI CLIENTE + SEDE DI POSTA (due colonne)
         client = contract_data['client']
-        page_width = self.w - self.l_margin - self.r_margin
-        col_width = page_width * 0.5
-        gutter = 3
+        post_office = contract_data['post_office']
         
-        y_start = self.get_y()
-        x_left = self.l_margin
-        x_right = self.l_margin + col_width + gutter
-        left_col_width = col_width - gutter/2
-        right_col_width = page_width - col_width - gutter
-        
-        # === COLONNA SINISTRA: DATI DEL CLIENTE ===
-        self.set_xy(x_left, y_start)
-        self.add_section_header("DATI DEL CLIENTE", width=left_col_width)
-        
-        labels = ['Azienda:', 'Indirizzo:', 'CAP/Città:', 'Tel.:', 'Fax:', 'Mail:', 'PEC:', 'Partita IVA:', 'Codice Fiscale:', 'IPA/SDI:']
-        values = [
-            client['company_name'],
-            client['address'],
-            f"{client['postal_code']} {client['city']}",
-            client['phone'],
-            client['fax'],
-            client['email'],
-            client['pec'],
-            client['vat_number'],
-            client['tax_code'],
-            client['ipa_sdi']
+        # Prepara dati cliente
+        client_rows = [
+            ('Azienda:', client['company_name']),
+            ('Indirizzo:', client['address']),
+            ('CAP/Città:', f"{client['postal_code']} {client['city']}"),
+            ('Tel.:', client['phone']),
+            ('Fax:', client['fax']),
+            ('Mail:', client['email']),
+            ('PEC:', client['pec']),
+            ('Partita IVA:', client['vat_number']),
+            ('Codice Fiscale:', client['tax_code']),
+            ('IPA/SDI:', client['ipa_sdi'])
         ]
         
-        for label, value in zip(labels, values):
-            self.set_x(x_left)
-            self.set_font(self.font_family, 'B', 7)
-            self.cell(28, 4, label, new_x=XPos.RIGHT)
-            self.set_font(self.font_family, '', 7)
-            self.cell(left_col_width - 28, 4, value, new_x=XPos.LEFT, new_y=YPos.NEXT)
+        # Prepara dati sede
+        post_rows = [
+            ('Indirizzo:', post_office['address']),
+            ('Indirizzo 2:', post_office['address2']),
+            ('Indirizzo 3:', post_office['address3'])
+        ]
         
-        left_end_y = self.get_y()
-        
-        # === COLONNA DESTRA: SEDE DI POSTA ===
-        self.set_xy(x_right, y_start)
-        self.add_gray_header("SEDE DI POSTA", width=right_col_width)
-        
-        post_office = contract_data['post_office']
-        post_labels = ['Indirizzo:', 'Indirizzo 2:', 'Indirizzo 3:']
-        post_values = [post_office['address'], post_office['address2'], post_office['address3']]
-        
-        for label, value in zip(post_labels, post_values):
-            self.set_x(x_right)
-            self.set_font(self.font_family, 'B', 7)
-            self.cell(28, 4, label, new_x=XPos.RIGHT)
-            self.set_font(self.font_family, '', 7)
-            self.cell(right_col_width - 28, 4, value, new_x=XPos.LEFT, new_y=YPos.NEXT)
+        # Usa componente base per layout a due colonne
+        self.add_two_column_info_boxes(
+            left_header='DATI DEL CLIENTE',
+            left_rows=client_rows,
+            right_header='SEDE DI POSTA',
+            right_rows=post_rows,
+            left_header_bg='primary',
+            right_header_bg='chip_gray'
+        )
         
         self.ln(3)
         
-        # SPEDIZIONE FATTURE (nella colonna destra, sotto sede di posta)
-        y_shipping = self.get_y()
-        self.set_xy(x_right, y_shipping)
-        
-        self.set_fill_color(*COLORS['chip_gray'])
-        self.set_text_color(*COLORS['text_white'])
-        self.rounded_rect(x_right, y_shipping, right_col_width, 7, 3, style='F')
-        self.set_font(self.font_family, 'B', 9)
-        self.cell(right_col_width, 7, "SPEDIZIONE FATTURE", border=0, align=Align.C, new_x=XPos.LEFT, new_y=YPos.NEXT)
-        self.set_text_color(*COLORS['text_dark'])
-        self.ln(2)
-        
-        self.set_x(x_right)
+        # SPEDIZIONE FATTURE
+        self.add_gray_header("SPEDIZIONE FATTURE")
         self.set_font(self.font_family, '', 7)
-        self.multi_cell(right_col_width, 3.5, "Barrare il metodo alternativo scelto per la spedizione delle fatture:")
+        self.multi_cell(0, 3.5, "Barrare il metodo alternativo scelto per la spedizione delle fatture:")
         self.ln(1)
         
-        # Checkbox con posizionamento manuale
-        checkbox_y = self.get_y()
-        self.set_xy(x_right, checkbox_y)
-        self.set_draw_color(0, 0, 0)
-        self.rounded_rect(self.get_x(), self.get_y(), 4, 4, 0.5, style='D')
-        self.set_x(x_right + 6)
-        self.set_font(self.font_family, '', 7)
-        self.cell(right_col_width - 6, 4, "Solo Fattura Elettronica", new_x=XPos.LEFT, new_y=YPos.NEXT)
+        # Usa componente base per checkbox
+        self.add_form_checkboxes([
+            "Solo Fattura Elettronica",
+            "Anche Posta Cartacea",
+            "Anche Mail o PEC al seguente indirizzo:"
+        ], spacing=1)
         
-        self.set_xy(x_right, self.get_y() + 1)
-        self.rounded_rect(self.get_x(), self.get_y(), 4, 4, 0.5, style='D')
-        self.set_x(x_right + 6)
-        self.cell(right_col_width - 6, 4, "Anche Posta Cartacea", new_x=XPos.LEFT, new_y=YPos.NEXT)
-        
-        self.set_xy(x_right, self.get_y() + 1)
-        self.rounded_rect(self.get_x(), self.get_y(), 4, 4, 0.5, style='D')
-        self.set_x(x_right + 6)
-        self.cell(right_col_width - 6, 4, "Anche Mail o PEC al seguente indirizzo:", new_x=XPos.LEFT, new_y=YPos.NEXT)
-        
-        self.set_x(x_right)
-        self.cell(right_col_width, 4, "........................................................................", new_x=XPos.LEFT, new_y=YPos.NEXT)
-        
-        right_end_y = self.get_y()
-        
-        # Posiziona cursore dopo la colonna più lunga
-        self.set_y(max(left_end_y, right_end_y) + 3)
+        # Linea per indirizzo email
+        self.cell(0, 4, "........................................................................", new_x=XPos.LEFT, new_y=YPos.NEXT)
+        self.ln(3)
         
         # SEZIONE ESECUTORE SERVIZI
         self.add_section_header("ESECUTORE DEI SERVIZI")
         executor = contract_data['executor']
         
-        page_width = self.w - self.l_margin - self.r_margin
-        col_width = page_width * 0.6
-        y_start = self.get_y()
+        # Prepara dati esecutore
+        executor_rows = [
+            ('Azienda:', executor['company_name']),
+            ('Indirizzo:', executor['address']),
+            ('CAP/Città:', f"{executor['postal_code']} {executor['city']}")
+        ]
         
-        # Colonna sinistra - dati azienda
-        self.set_x(self.l_margin)
-        self.set_font(self.font_family, 'B', 7)
-        self.cell(25, 4, 'Azienda:', new_x=XPos.RIGHT)
-        self.set_font(self.font_family, '', 7)
-        self.cell(col_width - 25, 4, executor['company_name'], new_x=XPos.LEFT, new_y=YPos.NEXT)
+        # Prepara dati contatti
+        contact_rows = [
+            ('Tel.:', executor['phone']),
+            ('Fax:', executor['fax']),
+            ('Mail:', executor['email'])
+        ]
         
-        self.set_x(self.l_margin)
-        self.set_font(self.font_family, 'B', 7)
-        self.cell(25, 4, 'Indirizzo:', new_x=XPos.RIGHT)
-        self.set_font(self.font_family, '', 7)
-        self.cell(col_width - 25, 4, executor['address'], new_x=XPos.LEFT, new_y=YPos.NEXT)
+        # Layout a due colonne (60/40)
+        def left_fn():
+            self.add_info_grid(executor_rows, label_width=25)
         
-        self.set_x(self.l_margin)
-        self.set_font(self.font_family, 'B', 7)
-        self.cell(25, 4, 'CAP/Città:', new_x=XPos.RIGHT)
-        self.set_font(self.font_family, '', 7)
-        self.cell(col_width - 25, 4, f"{executor['postal_code']} {executor['city']}", new_x=XPos.LEFT, new_y=YPos.NEXT)
+        def right_fn():
+            self.add_info_grid(contact_rows, label_width=15)
         
-        left_end_y = self.get_y()
+        self.add_two_columns_with_callbacks(
+            left_fn=left_fn,
+            right_fn=right_fn,
+            col_ratio=0.6,
+            gutter=3
+        )
         
-        # Colonna destra - contatti
-        x_right = self.l_margin + col_width + 3
-        right_col_width = page_width - col_width - 3
-        self.set_xy(x_right, y_start)
-        
-        self.set_font(self.font_family, 'B', 7)
-        self.cell(15, 4, 'Tel.:', new_x=XPos.RIGHT)
-        self.set_font(self.font_family, '', 7)
-        self.cell(right_col_width - 15, 4, executor['phone'], new_x=XPos.LEFT, new_y=YPos.NEXT)
-        
-        self.set_x(x_right)
-        self.set_font(self.font_family, 'B', 7)
-        self.cell(15, 4, 'Fax:', new_x=XPos.RIGHT)
-        self.set_font(self.font_family, '', 7)
-        self.cell(right_col_width - 15, 4, executor['fax'], new_x=XPos.LEFT, new_y=YPos.NEXT)
-        
-        self.set_x(x_right)
-        self.set_font(self.font_family, 'B', 7)
-        self.cell(15, 4, 'Mail:', new_x=XPos.RIGHT)
-        self.set_font(self.font_family, '', 7)
-        self.cell(right_col_width - 15, 4, executor['email'], new_x=XPos.LEFT, new_y=YPos.NEXT)
-        
-        self.set_y(max(left_end_y, self.get_y()) + 3)
+        self.ln(3)
         
         # SEZIONE SERVIZI OFFERTI
         self.add_section_header("SERVIZI OFFERTI")
         self.add_gray_header("UBICAZIONE BAGNI")
         
         services = contract_data['services']
-        page_width = self.w - self.l_margin - self.r_margin
-        label_width = 38
+        self.add_info_grid([
+            ('Ubicazione Bagni:', services['location']),
+            ('Indirizzo:', services['address']),
+            ('Responsabile:', services['manager'])
+        ], label_width=38)
         
-        self.set_x(self.l_margin)
-        self.set_font(self.font_family, 'B', 7)
-        self.cell(label_width, 4, 'Ubicazione Bagni:', new_x=XPos.RIGHT)
-        self.set_font(self.font_family, '', 7)
-        self.cell(page_width - label_width, 4, services['location'], new_x=XPos.LEFT, new_y=YPos.NEXT)
-        
-        self.set_x(self.l_margin)
-        self.set_font(self.font_family, 'B', 7)
-        self.cell(label_width, 4, 'Indirizzo:', new_x=XPos.RIGHT)
-        self.set_font(self.font_family, '', 7)
-        self.cell(page_width - label_width, 4, services['address'], new_x=XPos.LEFT, new_y=YPos.NEXT)
-        
-        self.set_x(self.l_margin)
-        self.set_font(self.font_family, 'B', 7)
-        self.cell(label_width, 4, 'Responsabile:', new_x=XPos.RIGHT)
-        self.set_font(self.font_family, '', 7)
-        self.cell(page_width - label_width, 4, services['manager'], new_x=XPos.LEFT, new_y=YPos.NEXT)
         self.ln(3)
         
         # SEZIONE DETTAGLI SERVIZI
@@ -474,17 +389,19 @@ class KobakContractPDF(KobakPDF):
         # SEZIONE PAGAMENTO
         self.add_gray_header("PAGAMENTO")
         payment = contract_data['payment']
-        self.add_info_line("Metodo:", payment['method'])
+        self.add_info_grid([('Metodo:', payment['method'])], label_width=38)
         self.ln(5)
         
         # SEZIONE BANCA
         self.add_gray_header("BANCA")
         bank = contract_data['bank']
-        self.add_info_line("Nome:", bank['name'])
-        self.add_info_line("Sede:", bank['branch'])
-        self.add_info_line("IBAN:", bank['iban'])
-        self.add_info_line("ABI:", bank['abi'])
-        self.add_info_line("CAB:", bank['cab'])
+        self.add_info_grid([
+            ('Nome:', bank['name']),
+            ('Sede:', bank['branch']),
+            ('IBAN:', bank['iban']),
+            ('ABI:', bank['abi']),
+            ('CAB:', bank['cab'])
+        ], label_width=38)
         self.ln(10)
         
         # SEZIONE FIRME
@@ -582,15 +499,20 @@ def create_sample_contract():
         
         'service_items': [
             ['Bagno Chimico Standard KOBAK', '2', 'n°', '150,00', '300,00'],
-            ['Servizio Pulizia Settimanale', '4', 'sett.', '50,00', '200,00'],
-            ['Installazione e Ritiro', '1', 'serv.', '100,00', '100,00']
+            ['Servizio Pulizia Base', '4', 'sett.', '50,00', '200,00'],
+            ['Installazione Standard', '1', 'serv.', '100,00', '100,00'],
+            ['Bagno Chimico Premium con Sistema di Ventilazione Avanzato, Porta Rinforzata in Acciaio, Illuminazione LED Interna, Dispenser Automatico Sapone e Gel Igienizzante, Specchio Panoramico e Sistema Anti-Odore con Filtri a Carboni Attivi', '3', 'n°', '250,00', '750,00'],
+            ['Servizio Pulizia Settimanale Completa con Sanificazione Professionale Certificata, Rifornimento Completo di tutti i Materiali Consumabili inclusi Carta Igienica Premium, Sapone Antibatterico, Gel Igienizzante Mani e Deodorante Ambientale', '8', 'sett.', '75,00', '600,00'],
+            ['Bagno Chimico per Disabili Conforme Normativa Europea con Accesso Facilitato, Maniglioni di Sicurezza, Spazio Interno Maggiorato e Sistema di Emergenza con Allarme', '1', 'n°', '200,00', '200,00'],
+            ['Servizio Manutenzione Straordinaria', '2', 'interv.', '120,00', '240,00'],
+            ['Trasporto Speciale Urgente con Mezzo Dedicato e Installazione Express entro 24 ore dalla Richiesta con Personale Specializzato e Certificato per Interventi in Cantieri Edili e Zone a Traffico Limitato', '1', 'serv.', '180,00', '180,00'],
         ],
         
         'totals': [
-            ('TOTALE IMPONIBILE', 'EUR 600,00'),
-            ('FURTI, INCENDI E ATTI VANDALICI (5%)', 'EUR 30,00'),
-            ('IVA (22%)', 'EUR 132,00'),
-            ('TOTALE COMPLESSIVO', 'EUR 762,00')
+            ('TOTALE IMPONIBILE', 'EUR 2.570,00'),
+            ('FURTI, INCENDI E ATTI VANDALICI (5%)', 'EUR 128,50'),
+            ('IVA (22%)', 'EUR 565,40'),
+            ('TOTALE COMPLESSIVO', 'EUR 3.263,90')
         ],
         
         'payment': {

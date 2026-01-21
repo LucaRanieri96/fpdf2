@@ -1,6 +1,6 @@
 from typing import Literal, List, Dict, Any, Optional, Sequence, Tuple, Callable
 from fpdf import FPDF
-from fpdf.enums import XPos, YPos, Align, RenderStyle
+from fpdf.enums import XPos, YPos, Align, RenderStyle, TableCellFillMode
 from fpdf.fonts import FontFace
 
 
@@ -862,13 +862,17 @@ class KobakPDF(FPDF):
             
             y_pos = self.get_y()
             self.rounded_rect(x_left, y_pos, left_width, 7, 2, style='F')
+            self.set_xy(x_left, y_pos)
             self.cell(left_width, 7, left_header, border=0, align=Align.C, fill=False, 
                      new_x=XPos.LEFT, new_y=YPos.NEXT)
+            self.set_x(x_left)
             self.ln(2)
             
             self.set_text_color(*COLORS['text_dark'])
             self.set_fill_color(*COLORS['bg_white'])
         
+        # IMPORTANTE: Assicura che left_fn inizi dalla X corretta
+        self.set_x(x_left)
         left_fn()
         left_end_y = self.get_y()
         
@@ -883,13 +887,17 @@ class KobakPDF(FPDF):
             
             y_pos = self.get_y()
             self.rounded_rect(x_right, y_pos, right_width, 7, 2, style='F')
+            self.set_xy(x_right, y_pos)
             self.cell(right_width, 7, right_header, border=0, align=Align.C, fill=False, 
                      new_x=XPos.LEFT, new_y=YPos.NEXT)
+            self.set_x(x_right)
             self.ln(2)
             
             self.set_text_color(*COLORS['text_dark'])
             self.set_fill_color(*COLORS['bg_white'])
         
+        # IMPORTANTE: Assicura che right_fn inizi dalla X corretta
+        self.set_x(x_right)
         right_fn()
         right_end_y = self.get_y()
         
@@ -956,7 +964,8 @@ class KobakPDF(FPDF):
     def add_table_row_with_fill(self, cells: list, widths: list, height: float = 5,
                                 fill: bool = False, fill_color: Tuple[int, int, int] = None,
                                 border: int = 0, font_size: int = 7, font_style: str = '',
-                                aligns: list = None, corner_radius: float = 0):
+                                aligns: list = None, corner_radius: float = 0,
+                                multiline: bool = False):
         """
         Riga di tabella con celle personalizzabili e background arrotondato.
         
@@ -971,6 +980,7 @@ class KobakPDF(FPDF):
             font_style: Stile font
             aligns: Lista allineamenti per cella ('L', 'C', 'R')
             corner_radius: Raggio angoli se fill=True
+            multiline: Se True, usa multi_cell per celle lunghe (auto-height)
         """
         page_width = self.content_width
         
@@ -986,30 +996,357 @@ class KobakPDF(FPDF):
         if aligns is None:
             aligns = ['L'] * len(cells)
         
-        # Setup fill
+        # Reset X
+        self.set_x(self.l_margin)
+        self.set_font(self.font_family, font_style, font_size)
+        
+        # FASE 1: Calcola altezza massima necessaria
+        y_start = self.get_y()
+        max_height = height
+        
+        for i, (cell, width) in enumerate(zip(cells, normalized_widths)):
+            cell_text = str(cell)
+            # Prima colonna: controlla se serve wrapping
+            if i == 0 and len(cell_text) > 45:
+                # Calcola altezza necessaria senza disegnare
+                lines = len(cell_text) // 40 + 1
+                estimated_height = lines * height * 0.8
+                max_height = max(max_height, estimated_height)
+        
+        # FASE 2: Disegna il fill con l'altezza corretta
         if fill:
             color = fill_color if fill_color else COLORS.get('bg_light', (246, 246, 246))
             self.set_fill_color(*color)
             
             if corner_radius > 0:
-                y_pos = self.get_y()
-                self.rounded_rect(self.l_margin, y_pos, page_width, height, corner_radius, style='F')
+                self.rounded_rect(self.l_margin, y_start, page_width, max_height, corner_radius, style='F')
+            else:
+                self.rect(self.l_margin, y_start, page_width, max_height, style='F')
         
-        # Reset X
-        self.set_x(self.l_margin)
-        self.set_font(self.font_family, font_style, font_size)
+        # FASE 3: Disegna il testo SOPRA il fill
+        self.set_xy(self.l_margin, y_start)
         
-        # Disegna celle
         for i, (cell, width, align) in enumerate(zip(cells, normalized_widths, aligns)):
-            is_last = (i == len(cells) - 1)
-            self.cell(width, height, str(cell), border=border, align=align,
-                     fill=False,  # Fill già gestito con rounded_rect
-                     new_x=XPos.LEFT if is_last else XPos.RIGHT,
-                     new_y=YPos.NEXT if is_last else YPos.TOP)
+            cell_text = str(cell)
+            x_pos = self.get_x()
+            
+            # Prima colonna: controlla se serve wrapping
+            if i == 0 and len(cell_text) > 45:
+                # Disegna prima il bordo con l'altezza completa
+                if border:
+                    self.rect(x_pos, y_start, width, max_height)
+                
+                # Poi usa multi_cell per wrapping SENZA bordo
+                self.multi_cell(width, height * 0.8, cell_text, border=0, align=align)
+                # Torna all'inizio della riga e vai alla prossima colonna
+                self.set_xy(x_pos + width, y_start)
+            else:
+                # Altre colonne: cell standard
+                self.cell(width, max_height, cell_text, border=border, align=align,
+                         fill=False,
+                         new_x=XPos.RIGHT, new_y=YPos.TOP)
+        
+        # Posiziona dopo la riga (alla max_height)
+        self.set_xy(self.l_margin, y_start + max_height)
     
     def reset_x(self):
         """Reset X al margine sinistro"""
         self.set_x(self.l_margin)
+    
+    def add_info_grid(self, rows: List[Tuple[str, str]], 
+                      label_width: float = 28, 
+                      line_height: float = 4,
+                      font_size: int = 7,
+                      max_value_width: float = None):
+        """
+        Griglia info label/valore (pattern comune nei contratti).
+        
+        Args:
+            rows: Lista di tuple (label, value)
+            label_width: Larghezza colonna label
+            line_height: Altezza riga
+            font_size: Dimensione font
+            max_value_width: Larghezza massima per valore (auto se None)
+        """
+        for label, value in rows:
+            # Salva posizione X iniziale (importante per colonne)
+            x_start = self.get_x()
+            
+            # Label in grassetto
+            self.set_font(self.font_family, 'B', font_size)
+            self.cell(label_width, line_height, label, new_x=XPos.RIGHT)
+            
+            # Value: calcola larghezza disponibile
+            self.set_font(self.font_family, '', font_size)
+            
+            if max_value_width is not None:
+                # Usa larghezza esplicita se fornita (modalità colonne)
+                value_width = max_value_width
+            else:
+                # Calcola automaticamente fino al margine destro
+                current_x = self.get_x()
+                value_width = (self.w - self.r_margin) - current_x
+            
+            # Disegna valore
+            self.cell(value_width, line_height, value, 
+                     new_x=XPos.LEFT, new_y=YPos.NEXT)
+            
+            # IMPORTANTE: Reset X alla posizione iniziale per la prossima riga
+            # Questo garantisce che tutte le righe partano dalla stessa X
+            self.set_x(x_start)
+    
+    def add_form_checkboxes(self, options: List[str], 
+                           checked_indices: List[int] = None,
+                           checkbox_size: float = 4,
+                           spacing: float = 1,
+                           font_size: int = 7):
+        """
+        Lista checkbox verticale con label (per form).
+        
+        Args:
+            options: Lista di opzioni (testi)
+            checked_indices: Indici delle checkbox da marcare come selezionate
+            checkbox_size: Dimensione checkbox
+            spacing: Spaziatura tra checkbox
+            font_size: Dimensione font
+        """
+        checked_indices = checked_indices or []
+        for i, option in enumerate(options):
+            y_start = self.get_y()
+            x_start = self.get_x()
+            self.add_checkbox(
+                x=x_start, 
+                y=y_start, 
+                size=checkbox_size,
+                checked=(i in checked_indices)
+            )
+            self.set_xy(x_start + checkbox_size + 2, y_start)
+            self.set_font(self.font_family, '', font_size)
+            available_width = (self.w - self.r_margin) - self.get_x()
+            self.cell(available_width, checkbox_size, option, new_x=XPos.LEFT, new_y=YPos.NEXT)
+            self.ln(spacing)
+    
+    def add_two_column_info_boxes(self, 
+                                  left_header: str, left_rows: List[Tuple[str, str]],
+                                  right_header: str, right_rows: List[Tuple[str, str]],
+                                  left_header_bg: str = 'primary',
+                                  right_header_bg: str = 'chip_gray',
+                                  col_ratio: float = 0.5,
+                                  gutter: float = 3,
+                                  label_width: float = 28):
+        """
+        Due box info affiancati con header colorati (es: cliente + sede).
+        
+        Args:
+            left_header: Titolo colonna sinistra
+            left_rows: Righe info sinistra (lista tuple label/valore)
+            right_header: Titolo colonna destra
+            right_rows: Righe info destra (lista tuple label/valore)
+            left_header_bg: Colore background header sinistro
+            right_header_bg: Colore background header destro
+            col_ratio: Rapporto larghezza colonne
+            gutter: Spaziatura tra colonne
+            label_width: Larghezza label nelle info grid
+        """
+        # Calcola larghezze colonne
+        page_width = self.content_width
+        left_width = page_width * col_ratio - gutter / 2
+        right_width = page_width * (1 - col_ratio) - gutter / 2
+        
+        # Calcola larghezza max per i valori (colonna - label_width)
+        left_value_width = left_width - label_width
+        right_value_width = right_width - label_width
+        
+        def left_fn():
+            self.add_info_grid(left_rows, label_width=label_width, 
+                             max_value_width=left_value_width)
+        
+        def right_fn():
+            self.add_info_grid(right_rows, label_width=label_width,
+                             max_value_width=right_value_width)
+        
+        self.add_columns_with_headers(
+            left_header=left_header, left_fn=left_fn,
+            right_header=right_header, right_fn=right_fn,
+            col_ratio=col_ratio,
+            gutter=gutter,
+            left_header_bg=left_header_bg,
+            right_header_bg=right_header_bg
+        )
+    
+    def add_info_section(self, 
+                        rows: List[Tuple[str, str]] = None,
+                        header: str = None,
+                        header_bg: str = 'primary',
+                        label_width: float = 28,
+                        two_columns: bool = False,
+                        left_rows: List[Tuple[str, str]] = None,
+                        right_rows: List[Tuple[str, str]] = None,
+                        left_header: str = None,
+                        right_header: str = None,
+                        left_header_bg: str = 'primary',
+                        right_header_bg: str = 'chip_gray',
+                        col_ratio: float = 0.5,
+                        gutter: float = 3):
+        """
+        🌟 COMPONENTE UNIVERSALE per sezioni info dinamiche.
+        Gestisce automaticamente layout singolo o doppio con header opzionali.
+        Passa solo liste di dati, lui fa tutto!
+        
+        MODALITÀ 1 - Singola colonna semplice:
+            pdf.add_info_section(rows=[('Label:', 'Value'), ...])
+        
+        MODALITÀ 2 - Singola colonna con header:
+            pdf.add_info_section(
+                header='DATI CLIENTE',
+                rows=[('Nome:', 'Mario'), ...],
+                header_bg='primary'
+            )
+        
+        MODALITÀ 3 - Due colonne con header:
+            pdf.add_info_section(
+                two_columns=True,
+                left_header='CLIENTE',
+                left_rows=[('Nome:', 'Mario'), ...],
+                right_header='SEDE',
+                right_rows=[('Indirizzo:', 'Via...')],
+                left_header_bg='primary',
+                right_header_bg='chip_gray'
+            )
+        
+        Args:
+            rows: Lista (label, value) per layout singolo
+            header: Titolo opzionale per layout singolo
+            header_bg: Colore background header singolo
+            label_width: Larghezza label nelle griglie
+            two_columns: Se True, usa layout a due colonne
+            left_rows/right_rows: Liste per colonne separate
+            left_header/right_header: Titoli colonne
+            left_header_bg/right_header_bg: Colori header
+            col_ratio: Rapporto larghezza (default 50/50)
+            gutter: Spazio tra colonne
+        """
+        if two_columns:
+            # LAYOUT DUE COLONNE
+            if not left_rows and not right_rows:
+                raise ValueError("Devi fornire left_rows e/o right_rows per two_columns=True")
+            
+            self.add_two_column_info_boxes(
+                left_header=left_header or '',
+                left_rows=left_rows or [],
+                right_header=right_header or '',
+                right_rows=right_rows or [],
+                left_header_bg=left_header_bg,
+                right_header_bg=right_header_bg,
+                col_ratio=col_ratio,
+                gutter=gutter,
+                label_width=label_width
+            )
+        else:
+            # LAYOUT SINGOLA COLONNA
+            if not rows:
+                raise ValueError("Devi fornire rows per layout singola colonna")
+            
+            # Header opzionale
+            if header:
+                self.set_fill_color(*COLORS[header_bg])
+                text_color = 'text_dark' if header_bg == 'primary' else 'text_white'
+                self.set_text_color(*COLORS[text_color])
+                self.set_font(self.font_family, 'B', 9)
+                
+                y_pos = self.get_y()
+                x_pos = self.get_x()
+                rect_width = self.w - self.l_margin - self.r_margin
+                
+                self.rounded_rect(x_pos, y_pos, rect_width, 7, 2, style='F')
+                self.cell(0, 7, header, border=0, align=Align.C, fill=False, 
+                         new_x=XPos.LEFT, new_y=YPos.NEXT)
+                self.ln(2)
+                
+                # Reset colors
+                self.set_text_color(*COLORS['text_dark'])
+                self.set_fill_color(*COLORS['bg_white'])
+            
+            # Griglia info
+            self.add_info_grid(rows, label_width=label_width)
+    
+    def add_zebra_table(self, headers: List[str], rows: List[List[str]],
+                       col_widths: List[float] = None,
+                       aligns: List[str] = None,
+                       header_bg: str = 'bg_light',
+                       zebra_color: str = 'bg_light',
+                       header_font_size: int = 7,
+                       row_font_size: int = 7,
+                       header_height: float = 6,
+                       row_height: float = 5,
+                       repeat_header_on_new_page: bool = True):
+        """
+        Tabella con zebra striping automatico usando table() nativo di fpdf2.
+        Gestisce automaticamente page break e ripetizione header.
+        
+        Args:
+            headers: Lista intestazioni colonne
+            rows: Lista righe (ciascuna è lista di celle)
+            col_widths: Larghezze colonne (frazione di content_width, default equidistribuite)
+            aligns: Allineamenti colonne (default L per prima, C per resto)
+            header_bg: Colore background header
+            zebra_color: Colore righe alternate
+            header_font_size: Dimensione font header
+            row_font_size: Dimensione font righe
+            header_height: Altezza header (ignorato, usa line_height)
+            row_height: Altezza righe
+            repeat_header_on_new_page: Se True, ripete l'header su ogni pagina
+        """
+        # Default: colonne equidistribuite
+        if col_widths is None:
+            col_widths = [1.0 / len(headers)] * len(headers)
+        
+        # Converti frazioni in larghezze assolute
+        absolute_widths = [w * self.content_width for w in col_widths]
+        
+        # Default: prima colonna a sinistra, resto centrato
+        if aligns is None:
+            aligns = ['L'] + ['C'] * (len(headers) - 1)
+        
+        # Converti aligns per fpdf2 table (LEFT, CENTER, RIGHT)
+        align_map = {'L': 'LEFT', 'C': 'CENTER', 'R': 'RIGHT'}
+        text_align = tuple(align_map[a] for a in aligns)
+        
+        # Stile header
+        headings_style = FontFace(
+            emphasis='BOLD',
+            fill_color=COLORS[header_bg],
+            size_pt=header_font_size
+        )
+        
+        # Usa table() nativo con zebra striping
+        with self.table(
+            col_widths=absolute_widths,
+            text_align=text_align,
+            line_height=row_height * 1.4,  # Converti altezza in line_height
+            cell_fill_color=COLORS[zebra_color],
+            cell_fill_mode=TableCellFillMode.ROWS,  # Alterna righe
+            headings_style=headings_style,
+            first_row_as_headings=True,
+            repeat_headings='ON_TOP_OF_EVERY_PAGE' if repeat_header_on_new_page else 0,
+            borders_layout='ALL'
+        ) as table:
+            # Header row
+            header_row = table.row()
+            for header in headers:
+                header_row.cell(header)
+            
+            # Data rows - colora manualmente per zebra con due colori
+            self.set_font_size(row_font_size)
+            for idx, row_data in enumerate(rows):
+                # Alterna tra zebra_color e bianco, senza bold
+                row_style = FontFace(
+                    fill_color=COLORS[zebra_color] if idx % 2 == 0 else COLORS['bg_white'],
+                    size_pt=row_font_size
+                )
+                data_row = table.row()
+                for datum in row_data:
+                    data_row.cell(str(datum), style=row_style)
     
     def draw_horizontal_line(self, color: Tuple[int, int, int] = None, width: float = 0.5, 
                             x_start: float = None, x_end: float = None, y: float = None):
